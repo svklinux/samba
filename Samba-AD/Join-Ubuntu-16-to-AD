@@ -1,0 +1,93 @@
+Join-Ubuntu1604-Desktop-to-Samba4-AD
+============================================
+
+
+DC-Server-Name	==	dc-ubuntu.svk-servers.net
+NETBIOSName		==	SVK-SERVERS
+DOMAIN-Name		==	SVK-SERVERS.NET
+
+Note--->
+Set the IP-Address,Gateway,DNS-Nameservers on Desktop if DHCP server not available
+Ping and resolve Domain server before joining
+--------
+
+# apt -y install winbind libpam-winbind libnss-winbind krb5-config 
+	
+	# specify Realm and DC-Hostname
+	Default Kerberos version 5 realm: 	SVK-SERVERS.NET
+	Kerberos servers for your realm:	dc-ubuntu.svk-servers.net
+	Administrative server for your Kerberos realm: 	dc-ubuntu.svk-servers.net 
+
+#
+
+# vi /etc/samba/smb.conf 
+[global]
+   workgroup = SVK-SERVERS
+   password server = dc-ubuntu.svk-servers.net
+   realm = SVK-SERVERS.NET
+   security = ads
+   idmap config * : range = 16777216-33554431
+   template homedir = /home/%U
+   template shell = /bin/bash
+   winbind use default domain = true
+   winbind offline logon = false 
+#
+
+
+# vi /etc/nsswitch.conf 
+...
+ # line 7: add like follows
+passwd:     compat winbind
+group:     compat winbind
+shadow:     compat winbind
+...
+#
+
+
+# vi /etc/pam.d/common-session 
+...
+  # add to the end to auto create a home directory when initial login
+session optional        pam_mkhomedir.so skel=/etc/skel umask=077
+#
+
+# systemctl restart networking 
+
+join in Active Directory ( net ads join -U [AD's admin user])
+-----------------------------------------------
+
+# net ads join -U dcadmin
+Enter dcadmin's password:
+Using short domain name -- SVK-SERVERS
+Joined 'UB16-DESK' to dns domain 'svk-servers.net'
+No DNS domain configured for ub16-desk. Unable to perform DNS Update.
+DNS update failed: NT_STATUS_INVALID_PARAMETER
+#
+
+
+(To remove the DNS-Error change /etc/hosts file entry,add FQDN of the Desktop to line 127.0.1.1"
+# vi /etc/hosts
+...
+127.0.1.1	UB16-Desk.svk-servers.net UB16-Desk
+#
+
+
+# systemctl restart winbind 
+
+
+# wbinfo -u ---------> Show domain users info
+# su - ad-user1 ---------> Switch to an AD user
+
+
+Manual Login OPtion on LightDM Login Screen
+-----------------------------------------------
+
+# vi /etc/lightdm/lightdm.conf.d/99-ad-login.conf
+[SeatDefaults]
+allow-guest=false
+greeter-show-manual-login=true
+#
+
+# reboot
+
+
+

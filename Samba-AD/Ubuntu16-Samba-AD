@@ -1,0 +1,380 @@
+
+Samab-AD-UBuntu (Mar-2017)
+==================================
+
+Ubuntu_Ver	==	Ubuntu-16.04
+IP			==	200.0.0.200/24
+Gateway		==	200.0.0.10
+Name		==	dc-ubuntu.svk-servers.net
+Samba_ver	==	4.4
+
+# passwd root
+
+# vi /etc/network/interfaces
+...
+auto eth0
+iface eth0 inet static
+
+address 200.0.0.200
+netmask 255.255.255.0
+network 200.0.0.0
+broadcast 200.0.0.255
+gateway 200.0.0.10
+dns-nameservers 200.0.0.200 8.8.8.8
+dns-search svk-servers.net
+#
+
+
+# vi /etc/hosts
+...
+#127.0.1.1	dc-ubuntu
+200.0.0.200	dc-ubuntu.svk-servers.net
+#
+
+# echo "dc-ubuntu.svk-servers.net" > /etc/hostname
+
+# reboot
+
+# apt update && apt upgrade
+--------------------------------
+
+
+# apt install git build-essential libacl1-dev libattr1-dev libblkid-dev libgnutls-dev libreadline-dev python-dev python-dnspython gdb pkg-config libpopt-dev libldap2-dev dnsutils libbsd-dev attr krb5-user docbook-xsl libcups2-dev libpam0g-dev ntp
+
+----
+Default Kerberos version 5 realm 	:	SVK-SERVERS.NET 
+Kerberos servers for your realm		:	dc-ubuntu
+Administrative server for your Kerberos realm :  dc-ubuntu
+----
+
+# git clone -b v4-4-stable git://git.samba.org/samba.git samba4
+
+# cd samba4
+# ./configure --enable-debug --enable-selftest
+# make 
+# make install
+
+# /usr/local/samba/bin/samba-tool domain provision --realm=svk-servers.net --domain=SVK-SERVERS --adminpass="dcadmin@123" --server-role=dc --dns-backend=SAMBA_INTERNAL
+---O/P--->
+...
+Server Role:           active directory domain controller
+Hostname:              dc-ubuntu
+NetBIOS Domain:        SVK-SERVERS
+DNS Domain:            svk-servers.net
+DOMAIN SID:            S-1-5-21-2511230173-3820306288-1538077147
+#
+
+# /usr/local/samba/sbin/samba   ----> To start Samba Service
+
+# /usr/local/samba/sbin/samba -V
+# /usr/local/samba/bin/smbclient -V
+
+
+# /usr/local/samba/bin/smbclient -L localhost -U%
+Domain=[SVK-SERVERS] OS=[Windows 6.1] Server=[Samba 4.4.10]
+
+	Sharename       Type      Comment
+	---------       ----      -------
+	netlogon        Disk      
+	sysvol          Disk      
+	IPC$            IPC       IPC Service (Samba 4.4.10)
+Domain=[SVK-SERVERS] OS=[Windows 6.1] Server=[Samba 4.4.10]
+
+	Server               Comment
+	---------            -------
+
+	Workgroup            Master
+	---------            -------
+#
+
+
+# /usr/local/samba/bin/smbclient //localhost/netlogon -UAdministrator%"dcadmin@123" -c 'ls'
+Domain=[SVK-SERVERS] OS=[Windows 6.1] Server=[Samba 4.4.10]
+  .                                   D        0  Thu Mar  9 18:12:06 2017
+  ..                                  D        0  Thu Mar  9 18:12:30 2017
+
+		7092728 blocks of size 1024. 2702220 blocks available
+#
+
+
+DNS-Update---->
+
+# echo "domain SVK-SERVERS.NET" >> /etc/resolv.conf
+
+# vi /usr/local/samba/etc/smb.conf
+[global]
+	workgroup = SVK-SERVERS
+	realm = svk-servers.net
+	netbios name = DC-UBUNTU
+	server role = active directory domian controller
+	dns forwarder = 8.8.8.8
+
+[netlogon]
+	path = /usr/local/samba/var/locks/sysvol/svk-servers.net/scripts
+	read only = No
+[sysvol]
+	path = /usr/local/samba/var/locks/sysvol
+	read only = No
+#
+
+
+# vi /usr/local/samba/share/setup/krb5.conf
+[libdefaults]
+	default_realm = SVK-SERVERS.NET
+	dns_lookup_realm = false
+	dns_lookup_kdc = true
+#
+
+# kinit administrator@SVK-SERVERS.NET
+Password for administrator@SVK-SERVERS.NET:
+---O/P--->
+Warning: Your password will expire in 41 days on Thursday 20 April 2017 06:12:29 PM IST
+#
+
+# klist -e
+---O/P--->
+Ticket cache: FILE:/tmp/krb5cc_0
+Default principal: administrator@SVK-SERVERS.NET
+
+Valid starting       Expires              Service principal
+2017-03-09T18:18:30  2017-03-10T04:18:30  krbtgt/SVK-SERVERS.NET@SVK-SERVERS.NET
+	renew until 2017-03-10T18:18:25, Etype (skey, tkt): aes256-cts-hmac-sha1-96, aes256-cts-hmac-sha1-96
+#
+
+
+# mkdir -m 770 /Users
+# chmod g+s /Users
+# chown root:users /Users
+
+# vi /usr/local/samba/etc/smb.conf
+...
+[Users]
+directory_mode: parameter = 0700
+read only = no
+path = /Users
+csc policy = documents
+#
+
+# /usr/local/samba/bin/samba-tool user setexpiry administrator --noexpiry
+---O/P--->
+Expiry for user 'administrator' disabled.
+#
+
+
+Turn-OFf Password-Complexity
+---------------------------
+
+# /usr/local/samba/bin/samba-tool domain passwordsettings set --complexity=off
+---O/P--->
+Password complexity deactivated!
+All changes applied successfully!
+#
+
+Samba-Service-File
+==================================
+
+# vi /etc/systemd/system/samba-ad-dc.service
+[Unit]
+Description=Samba Active Directory Domain Controller
+#After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/samba/sbin/samba -D
+PIDFile=/usr/local/samba/var/run/samba.pid
+
+[Install]
+WantedBy=multi-user.target
+#
+
+# systemctl enable samba-ad-dc
+# systemctl start samba-ad-dc
+# systemctl status samba-ad-dc
+
+Join-Windows-Client-to-Domains
+==================================
+
+Change DNS to dc-ubuntu-ipaddress and update time
+
+MyComputer--->Properties-->AdvancedSystemSettings
+--->ComputerName(Tab)--->Change
+
+Domain		:	SVK-SERVERS or svk-servers.net
+UserName	:	administrator
+Password	:	dcadmin@123
+
+"Welcome to the svk-servers.net domain"
+
+Reboot
+
+After Reboot Press Alt+Ctl+del to Login As Domain User
+Select-->SwitchUser-->OtherUser
+
+UserName		:	SVK-SERVERS\administrator	
+Password		:	dcadmin@123
+
+
+Manage Samba-Domain on Wondows Clients
+========================================
+
+1.Download and install "Remote Server Administration Tools"
+
+2.Enable RSAT Features from ControllPanel--->Programs&Features--->TurnWindowsFeature-ON/OFF--->Enable ALL in RSAT
+
+3.Add Users Using "Active Directory Users and Groups" Snap-In
+	GoTo--->svk-servers.net--->Users-->"New User"
+
+3.Add New User to "Administrator" Group
+
+Login Using New-User
+
+UserName		:	New-user-name
+Password		:	xxxxxxxxxx
+
+==================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
